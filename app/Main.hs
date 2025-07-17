@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Main (main) where
 
@@ -17,10 +18,16 @@ import System.Environment (getArgs)
 import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
 
+import Data.Semigroup ((<>))
+import Options.Applicative
+
+-- stack run -- --help
+-- or
+-- stack build
+-- stack exec myrsa-exe -- -h
+
 newtype PubKey = PubKey (Integer, Integer)
 newtype PrivKey = PrivKey (Integer, Integer)
-
--- TODO: add description to README file: RSA encryption without padding (aka “textbook RSA”),
 
 -- returns floor of logarithm with base 2
 myLog :: Integer -> Int
@@ -32,65 +39,107 @@ myLog x =
 nOfBits :: Integer -> Int
 nOfBits x = 1 + myLog x  
 
--- stack run -- --help
-
 pubKeyFileName :: String
 pubKeyFileName = "PUB.txt"
 privKeyFileName :: String
 privKeyFileName = "PRIV.txt"
 
--- TODO: add key size when generating keys
--- TODO: use package optparse-applicative for parsing command line options
+data Opts = Opts
+    { optCommand :: !Command }
+
+data Command
+    = Encrypt EncOpts
+    | Decrypt DecOpts
+    | GenKeys GenKeysOpts
+
+data EncOpts = EncOpts
+    { optEncInput :: FilePath
+    , optEncOutput :: FilePath
+    , optEncKey :: FilePath
+    }
+
+data DecOpts = DecOpts
+    { optDecInput :: FilePath
+    , optDecOutput :: FilePath
+    , optDecKey :: FilePath
+    }
+
+data GenKeysOpts = GenKeyOpts
+    { optKeySize :: Int
+    , optPrivKey :: FilePath
+    , optPubKey :: FilePath
+    }
+
+currentVersion :: String
+currentVersion = "0.1.0.0"
 
 main :: IO ()
 main = do
-    args <- getArgs
-    -- let helpMsg = "Usage:\n  myrsa-exe [--help] [-k | [-e | -d] INFILE OUTFILE]\n"
-    let exeName = "myrsa-exe"
-    let helpMsg = "Usage: " ++ exeName ++ " [OPTIONS]\n"
-            ++ "\nOptions:"
-            ++ "\n  -h, --help               print help"
-            ++ "\n  -e <INFILE> <OUTFILE>    encrypt file"
-            ++ "\n  -d <INFILE> <OUTFILE>    decrypt file"
-            ++ "\n  -c <INFILE> <OUTFILE>    copy file"
-            ++ "\n  -k                       generate keys"
-            ++ "\nExpecting private key in file " ++ privKeyFileName
-            ++ "\nExpecting public key in file " ++ pubKeyFileName
-            ++ "\n"
-    case args of
-        ("--help":_) -> putStrLn helpMsg
-        ("-h":_) -> putStrLn helpMsg
-        ("-c":inFile:outFile:[]) -> do
-            copyFile inFile outFile 
-        ("-e":inFile:outFile:[]) -> do
-            key <- readPubKey
-            putStrLn $ "encrypting " ++ inFile ++ " to " ++ outFile
-            hFlush stdout
-            hIn <- openBinaryFile inFile ReadMode
-            hOut <- openBinaryFile outFile WriteMode
-            enc key hIn hOut
-            hClose hOut
-            hClose hIn
-        ("-d":inFile:outFile:[]) -> do
-            key <- readPrivKey 
-            putStrLn $ "decrypting " ++ inFile ++ " to " ++ outFile
-            hFlush stdout
-            hIn <- openBinaryFile inFile ReadMode
-            hOut <- openBinaryFile outFile WriteMode
-            dec key hIn hOut
-            hClose hOut
-            hClose hIn
-        ("-k":[]) -> do
-            (PubKey (n, e), PrivKey (_, d)) <- genKeys
-            writeIntegers pubKeyFileName n e
-            writeIntegers privKeyFileName n d
-            putStrLn $ "public encryption key saved in file " ++ pubKeyFileName
-            putStrLn $ "private decryption key saved in file " ++ privKeyFileName
-        _ -> putStrLn helpMsg
+    (opts :: Opts) <- execParser optsParser
+    case optCommand opts of
+        Encrypt e -> runEncrypt e 
+        Decrypt d -> runDecrypt d
+        GenKeys keysOpts -> runGenKeys keysOpts
+    
+    where
+    optsParser :: ParserInfo Opts
+    optsParser =
+        info
+            (helper <*> versionOption <*> programOptions)
+            (fullDesc <> progDesc "Encrypts files using RSA algorithm (without padding)." <> 
+                header "myrsa - an encryption CLI tool for educational purposes" <>
+                footer "Note: This is an experimental tool. The size of last input chunk is appended to output file in plaintext.")
+    
+    versionOption :: Parser (a -> a)
+    versionOption = infoOption currentVersion (long "version" <> help "Show version")
 
-readPrivKey :: IO PrivKey
-readPrivKey = do
-    let file = privKeyFileName
+    programOptions :: Parser Opts
+    programOptions =
+        Opts <$> hsubparser (encCommand <> decCommand <> genKeysCommand)
+
+    encCommand :: Mod CommandFields Command
+    encCommand =
+        command 
+            "enc"
+            (info (Encrypt <$> encOptions) (progDesc "Encrypt a file"))
+    
+    encOptions :: Parser EncOpts
+    encOptions =
+        EncOpts <$>
+        strArgument (metavar "IN_FILE" <> help "Input filename") <*>
+        strArgument (metavar "OUT_FILE" <> help "Output filename") <*>
+        strOption
+            (short 'k' <> metavar "KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key filename")
+
+    decCommand :: Mod CommandFields Command
+    decCommand =
+        command 
+            "dec"
+            (info (Decrypt <$> decOptions) (progDesc "Decrypt a file"))
+
+    decOptions :: Parser DecOpts
+    decOptions =
+        DecOpts <$>
+        strArgument (metavar "IN_FILE" <> help "Input filename") <*>
+        strArgument (metavar "OUT_FILE" <> help "Output filename") <*>
+        strOption
+            (short 'k' <> metavar "KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key filename")
+
+    genKeysCommand :: Mod CommandFields Command
+    genKeysCommand =
+        command
+            "gen" 
+            (info (GenKeys <$> genKeysOptions) (progDesc "Generate keys"))
+
+    genKeysOptions :: Parser GenKeysOpts
+    genKeysOptions =
+        GenKeyOpts <$>
+        option auto (long "key-size" <> short 's' <> help "Key size (modulus size in bits)" <> showDefault <> value 2048 <> metavar "BITS") <*>
+        strOption (long "pri" <> metavar "PRIVATE_KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key file") <*>
+        strOption (long "pub" <> metavar "PUBLIC_KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key file")
+
+readPrivKey :: FilePath -> IO PrivKey
+readPrivKey file = do
     putStrLn $ "reading private key from file " ++ file 
     hFlush stdout
     (n, d) <- readIntegers file
@@ -98,9 +147,8 @@ readPrivKey = do
     hFlush stdout
     return $ PrivKey (n, d)
 
-readPubKey :: IO PubKey
-readPubKey = do
-    let file = pubKeyFileName
+readPubKey :: FilePath -> IO PubKey
+readPubKey file = do
     putStrLn $ "reading public key from file " ++ file 
     hFlush stdout
     (n, e) <- readIntegers file
@@ -156,27 +204,6 @@ encOutputBlockSize n = go 1 (2^8)
         if x >= n
         then k
         else go (k+1) $ x `shiftL` 8 
-
--- copying binary file
-copyFile :: FilePath -> FilePath -> IO ()
-copyFile inFile outFile = do
-    putStrLn $ "copying file " ++ inFile ++ " to " ++ outFile
-    hFlush stdout
-    hIn <- openBinaryFile inFile ReadMode
-    hOut <- openBinaryFile outFile WriteMode
-    copyLoop hIn hOut
-    hClose hOut
-    hClose hIn
-
-copyLoop :: Handle -> Handle -> IO ()
-copyLoop hIn hOut = do
-    let chunkSize = 10
-    bs <- B.hGet hIn chunkSize
-    B.hPut hOut bs
-    eof <- hIsEOF hIn
-    if not eof
-    then copyLoop hIn hOut
-    else putStrLn "finished copying"
 
 -- expmod m a k = a^k mod m 
 expmod :: (Integral a, Integral p) => p -> p -> a -> p
@@ -240,16 +267,48 @@ dec (PrivKey (n, d)) hIn hOut =
             let m2 = expmod n m d
             loop m2
 
--- Key generation
-
-genKeys :: IO (PubKey, PrivKey)
-genKeys = do
-    putStrLn $ "generating keys"
+runEncrypt :: EncOpts -> IO ()
+runEncrypt e = do
+    key <- readPubKey e.optEncKey
+    putStrLn $ "encrypting " ++ e.optEncInput ++ " to " ++ e.optEncOutput
     hFlush stdout
-    p <- generatePrime 1024
-    q <- generatePrime 1024
+    hIn <- openBinaryFile e.optEncInput ReadMode
+    hOut <- openBinaryFile e.optEncOutput WriteMode
+    enc key hIn hOut
+    hClose hOut
+    hClose hIn
+
+runDecrypt :: DecOpts -> IO ()
+runDecrypt d = do
+    key <- readPrivKey d.optDecKey
+    putStrLn $ "decrypting " ++ d.optDecInput ++ " to " ++ d.optDecOutput
+    hFlush stdout
+    hIn <- openBinaryFile d.optDecInput ReadMode
+    hOut <- openBinaryFile d.optDecOutput WriteMode
+    dec key hIn hOut
+    hClose hOut
+    hClose hIn
+
+-- Key generation
+runGenKeys :: GenKeysOpts -> IO ()
+runGenKeys opts = do
+    (PubKey (n, e), PrivKey (_, d)) <- genKeys opts.optKeySize
+    -- TODO: check if files exist and ask to overwrite
+    writeIntegers (opts.optPubKey) n e
+    writeIntegers (opts.optPrivKey) n d
+    putStrLn $ "public encryption key saved in file " ++ opts.optPubKey
+    putStrLn $ "private decryption key saved in file " ++ opts.optPrivKey
+
+genKeys :: Int -> IO (PubKey, PrivKey)
+genKeys size = do
+    putStrLn $ "generating keys of size " ++ show size ++ " bits"
+    -- TODO: check if size is valid
+    let primeSize = size `div` 2
+    hFlush stdout
+    p <- generatePrime primeSize
+    q <- generatePrime primeSize
     let n = p * q
-    putStrLn $ "key (modulus) size: " ++ show (nOfBits n) ++ " bits"
+    putStrLn $ "modulus size: " ++ show (nOfBits n) ++ " bits"
     hFlush stdout
     -- Euler's totient function
     let tot = (p - 1) * (q - 1)

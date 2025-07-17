@@ -4,7 +4,7 @@ github:              "githubuser/myrsa"
 license:             BSD-3-Clause
 author:              "Maciej Matyasik"
 maintainer:          "example@example.com"
-copyright:           "2025 Author name here"
+copyright:           "2025 Maciej Matyasik"
 
 extra-source-files:
 - README.md
@@ -24,9 +24,8 @@ dependencies:
 - QuickCheck
 - bytestring
 - crypto-api
-- entropy
-- random
 - cryptonite
+- optparse-applicative
 
 ghc-options:
 - -Wall
@@ -43,7 +42,7 @@ library:
   source-dirs: src
 
 executables:
-  myrsa-exe:
+  myrsa:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
