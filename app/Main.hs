@@ -116,7 +116,7 @@ main = do
     genKeysOptions =
         GenKeyOpts <$>
         option auto (long "key-size" <> short 's' <> help "Key size (modulus size in bits)" <> showDefault <> value 2048 <> metavar "BITS") <*>
-        strOption (long "pri" <> metavar "PRIVATE_KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key file") <*>
+        strOption (long "priv" <> metavar "PRIVATE_KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key file") <*>
         strOption (long "pub" <> metavar "PUBLIC_KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key file") <*>
         switch (short 'f' <> help "Allow overwriting of existing key files")
 
