@@ -26,6 +26,7 @@ dependencies:
 - crypto-api
 - cryptonite
 - optparse-applicative
+- directory
 
 ghc-options:
 - -Wall

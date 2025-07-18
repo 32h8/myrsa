@@ -39,6 +39,7 @@ library
     , bytestring
     , crypto-api
     , cryptonite
+    , directory
     , optparse-applicative
   default-language: Haskell2010
 
@@ -57,6 +58,7 @@ executable myrsa
     , bytestring
     , crypto-api
     , cryptonite
+    , directory
     , myrsa
     , optparse-applicative
   default-language: Haskell2010
@@ -77,6 +79,7 @@ test-suite myrsa-test
     , bytestring
     , crypto-api
     , cryptonite
+    , directory
     , myrsa
     , optparse-applicative
   default-language: Haskell2010

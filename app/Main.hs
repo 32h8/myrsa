@@ -7,7 +7,8 @@ module Main (main) where
 import Lib
 
 import System.IO
-import Control.Monad -- TODO remove
+import System.Directory (doesFileExist)
+import Control.Monad
 
 import Data.Semigroup ((<>))
 import Options.Applicative
@@ -47,6 +48,7 @@ data GenKeysOpts = GenKeyOpts
     { optKeySize :: Int
     , optPrivKey :: FilePath
     , optPubKey :: FilePath
+    , optOverwrite :: Bool
     }
 
 currentVersion :: String
@@ -115,7 +117,8 @@ main = do
         GenKeyOpts <$>
         option auto (long "key-size" <> short 's' <> help "Key size (modulus size in bits)" <> showDefault <> value 2048 <> metavar "BITS") <*>
         strOption (long "pri" <> metavar "PRIVATE_KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key file") <*>
-        strOption (long "pub" <> metavar "PUBLIC_KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key file")
+        strOption (long "pub" <> metavar "PUBLIC_KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key file") <*>
+        switch (short 'f' <> help "Allow overwriting of existing key files")
 
 readPrivKey :: FilePath -> IO PrivKey
 readPrivKey file = do
@@ -177,10 +180,23 @@ runDecrypt d = do
 -- Key generation
 runGenKeys :: GenKeysOpts -> IO ()
 runGenKeys opts = do
-    (PubKey (n, e), PrivKey (_, d)) <- genKeys opts.optKeySize
-    -- TODO: check if files exist and ask to overwrite
-    writeIntegers (opts.optPubKey) n e
-    writeIntegers (opts.optPrivKey) n d
-    putStrLn $ "public encryption key saved in file " ++ opts.optPubKey
-    putStrLn $ "private decryption key saved in file " ++ opts.optPrivKey
+    pubExists <- doesFileExist pub
+    privExists <- doesFileExist priv
+    when pubExists $ putStrLn $ "File " ++ pub ++ " already exists."
+    when privExists $ putStrLn $ "File " ++ priv ++ " already exists."
+    if pubExists || privExists 
+        then do
+            if opts.optOverwrite
+            then proceed
+            else putStrLn "Aborting. Set option to overwrite files."
+        else proceed
+    where
+        pub = opts.optPubKey
+        priv = opts.optPrivKey
+        proceed = do 
+            (PubKey (n, e), PrivKey (_, d)) <- genKeys opts.optKeySize
+            writeIntegers pub n e
+            writeIntegers priv n d
+            putStrLn $ "public encryption key saved in file " ++ pub
+            putStrLn $ "private decryption key saved in file " ++ priv
 
