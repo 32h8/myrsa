@@ -13,6 +13,7 @@ import Crypto.Number.Prime (generatePrime)
 import Crypto.Number.Basic (gcde)
 import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
+import Control.Monad (when)
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
@@ -129,6 +130,7 @@ genKeys size = do
     putStrLn $ "generating keys of size " ++ show size ++ " bits"
     -- TODO: check if size is valid
     let primeSize = size `div` 2
+    when (primeSize < 5) $ error "Aborting. Invalid key size which should be >= 10bits."
     hFlush stdout
     p <- generatePrime primeSize
     q <- generatePrime primeSize
@@ -138,11 +140,11 @@ genKeys size = do
     -- Euler's totient function
     let tot = (p - 1) * (q - 1)
     let e = 2^16 + 1
-    if not (1 < e && e < tot)
-    then error "error generating keys: wrong e param"
-    else do
-        let d = mminv e tot
-        return (PubKey (n, e), PrivKey (n, d)) 
+    putStrLn $ "using public exponent e = " ++ show e
+    when (not $ 1 < e) $ error "error: e param should be > 1"
+    when (not $ e < tot) $ error "error: e param should be < totient. Try increasing key size."
+    let d = mminv e tot
+    return (PubKey (n, e), PrivKey (n, d)) 
 
 -- modular multiplicative inverse of a modulo m
 mminv :: Integer -> Integer -> Integer
