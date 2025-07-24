@@ -1,8 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Lib
-    ( enc, dec, genKeys, nOfBits, PubKey(..), PrivKey(..)
+    ( enc, dec, decCRT, genKeys, nOfBits, PubKey(..), PrivKey(..)
     ) where
 
 import Data.ByteString (ByteString)
@@ -15,11 +16,16 @@ import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
 import Control.Monad (when)
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
 
 newtype PubKey = PubKey (Integer, Integer)
-newtype PrivKey = PrivKey (Integer, Integer)
+data PrivKey = PrivKey
+    { privP :: Integer
+    , privQ :: Integer
+    , privDp :: Integer
+    , privDq :: Integer
+    , privQinv :: Integer
+    , privD :: Integer
+    }
 
 -- returns floor of logarithm with base 2
 myLog :: Integer -> Int
@@ -95,9 +101,12 @@ enc (PubKey (n, e)) hIn hOut =
         else loop
 
 dec :: PrivKey -> Handle -> Handle -> IO ()
-dec (PrivKey (n, d)) hIn hOut = 
+dec k hIn hOut = 
     go
     where
+    n = k.privP * k.privQ
+    d = k.privD
+
     inBlockSize = encOutputBlockSize n
     outBlockSize = encInputBlockSize n
     outBits = outBlockSize * 8
@@ -125,6 +134,52 @@ dec (PrivKey (n, d)) hIn hOut =
             let m2 = expmod n m d
             loop m2
 
+-- uses optimization based on Chinese Remainder Theorem 
+decCRT :: PrivKey -> Handle -> Handle -> IO ()
+decCRT k hIn hOut = 
+    go
+    where
+    n = k.privP * k.privQ
+    inBlockSize = encOutputBlockSize n
+    outBlockSize = encInputBlockSize n
+    outBits = outBlockSize * 8
+
+    p = k.privP
+    q = k.privQ
+    dP = k.privDp
+    dQ = k.privDq
+    qInv = k.privQinv
+
+    aux :: Integer -> Integer 
+    aux c = 
+        let m1 = expmod p c dP
+            m2 = expmod q c dQ
+            h = (qInv * (m1 - m2)) `mod` p
+            m = m2 + h * q
+        in m
+    
+    go :: IO ()
+    go = do
+        bs <- B.hGet hIn inBlockSize
+        eof <- hIsEOF hIn
+        if eof
+        then return ()
+        else do
+            let c = bs2i bs
+            let m = aux c
+            loop m
+    loop prevDecryptedBlock = do
+        bs <- B.hGet hIn inBlockSize
+        eof <- hIsEOF hIn
+        if eof
+        then do
+            let lastChunkBytes = integerToInt $ bs2i bs
+            B.hPut hOut $ i2bs (lastChunkBytes * 8) prevDecryptedBlock
+        else do
+            B.hPut hOut $ i2bs outBits prevDecryptedBlock
+            let c = bs2i bs
+            loop $ aux c
+
 genKeys :: Int -> IO (PubKey, PrivKey)
 genKeys size = do
     putStrLn $ "generating keys of size " ++ show size ++ " bits"
@@ -144,7 +199,15 @@ genKeys size = do
     when (not $ 1 < e) $ error "error: e param should be > 1"
     when (not $ e < tot) $ error "error: e param should be < totient. Try increasing key size."
     let d = mminv e tot
-    return (PubKey (n, e), PrivKey (n, d)) 
+    let privKey = PrivKey 
+            { privP = p
+            , privQ = q
+            , privDp = d `mod` (p - 1) 
+            , privDq = d `mod` (q - 1)
+            , privQinv = mminv q p
+            , privD = d
+            }
+    return (PubKey (n, e), privKey) 
 
 -- modular multiplicative inverse of a modulo m
 mminv :: Integer -> Integer -> Integer

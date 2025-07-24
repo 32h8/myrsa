@@ -72,7 +72,7 @@ Available options:
 Decrypt file
 ```bash
 $ myrsa dec --help
-Usage: <interactive> dec IN_FILE OUT_FILE [-k KEY_FILE]
+Usage: <interactive> dec IN_FILE OUT_FILE [-k KEY_FILE] [--no-crt]
 
   Decrypt a file
 
@@ -80,6 +80,7 @@ Available options:
   IN_FILE                  Input filename
   OUT_FILE                 Output filename
   -k KEY_FILE              Private key filename (default: "PRIV.txt")
+  --no-crt                 Do not use Chinese Remainder Theorem optimization
   -h,--help                Show this help text
 ```
 

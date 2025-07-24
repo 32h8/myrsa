@@ -16,13 +16,19 @@ import Options.Applicative
 -- stack run -- --help
 -- or
 -- stack build
--- stack exec myrsa-exe -- -h
+-- stack exec myrsa -- -h
+
+-- for runtime stats:
+-- stack exec myrsa -- +RTS -s
 
 -- default filenames for keys
 pubKeyFileName :: String
 pubKeyFileName = "PUB.txt"
 privKeyFileName :: String
 privKeyFileName = "PRIV.txt"
+
+defaultKeySizeBits :: Int
+defaultKeySizeBits = 2048
 
 data Opts = Opts
     { optCommand :: !Command }
@@ -42,6 +48,7 @@ data DecOpts = DecOpts
     { optDecInput :: FilePath
     , optDecOutput :: FilePath
     , optDecKey :: FilePath
+    , optDecNoCRT :: Bool
     }
 
 data GenKeysOpts = GenKeyOpts
@@ -52,7 +59,7 @@ data GenKeysOpts = GenKeyOpts
     }
 
 currentVersion :: String
-currentVersion = "0.1.0.0"
+currentVersion = "0.2.0.0"
 
 main :: IO ()
 main = do
@@ -104,7 +111,8 @@ main = do
         strArgument (metavar "IN_FILE" <> help "Input filename") <*>
         strArgument (metavar "OUT_FILE" <> help "Output filename") <*>
         strOption
-            (short 'k' <> metavar "KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key filename")
+            (short 'k' <> metavar "KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key filename") <*>
+        switch (long "no-crt" <> help "Do not use Chinese Remainder Theorem optimization")
 
     genKeysCommand :: Mod CommandFields Command
     genKeysCommand =
@@ -115,19 +123,10 @@ main = do
     genKeysOptions :: Parser GenKeysOpts
     genKeysOptions =
         GenKeyOpts <$>
-        option auto (long "key-size" <> short 's' <> help "Key size (modulus size in bits)" <> showDefault <> value 2048 <> metavar "BITS") <*>
+        option auto (long "key-size" <> short 's' <> help "Key size (modulus size in bits)" <> showDefault <> value defaultKeySizeBits <> metavar "BITS") <*>
         strOption (long "priv" <> metavar "PRIVATE_KEY_FILE" <> showDefault <> value privKeyFileName <> help "Private key file") <*>
         strOption (long "pub" <> metavar "PUBLIC_KEY_FILE" <> showDefault <> value pubKeyFileName <> help "Public key file") <*>
         switch (short 'f' <> help "Allow overwriting of existing key files")
-
-readPrivKey :: FilePath -> IO PrivKey
-readPrivKey file = do
-    putStrLn $ "reading private key from file " ++ file 
-    hFlush stdout
-    (n, d) <- readIntegers file
-    putStrLn $ "modulus size: " ++ show (nOfBits n) ++ " bits" 
-    hFlush stdout
-    return $ PrivKey (n, d)
 
 readPubKey :: FilePath -> IO PubKey
 readPubKey file = do
@@ -151,9 +150,33 @@ readIntegers file = do
 writeIntegers :: FilePath -> Integer -> Integer -> IO ()
 writeIntegers file a b = do
     handle <- openFile file WriteMode
-    hPutStrLn handle $ show a
-    hPutStrLn handle $ show b
+    hPrint handle a
+    hPrint handle b
     hClose handle
+
+writePrivKey :: FilePath -> PrivKey -> IO ()
+writePrivKey file k = do
+    let (PrivKey a1 a2 a3 a4 a5 a6) = k
+    handle <- openFile file WriteMode
+    hPrint handle a1
+    hPrint handle a2
+    hPrint handle a3
+    hPrint handle a4
+    hPrint handle a5
+    hPrint handle a6
+    hClose handle
+
+readPrivKey :: FilePath -> IO PrivKey
+readPrivKey file = do
+    putStrLn $ "reading private key from file " ++ file
+    handle <- openFile file ReadMode
+    PrivKey <$> fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle)
+        <* hClose handle
 
 runEncrypt :: EncOpts -> IO ()
 runEncrypt e = do
@@ -173,7 +196,11 @@ runDecrypt d = do
     hFlush stdout
     hIn <- openBinaryFile d.optDecInput ReadMode
     hOut <- openBinaryFile d.optDecOutput WriteMode
-    dec key hIn hOut
+    if d.optDecNoCRT
+        then do
+            putStrLn "Disabling Chinese Remainder Theorem optimization"
+            dec key hIn hOut
+        else decCRT key hIn hOut
     hClose hOut
     hClose hIn
 
@@ -184,7 +211,7 @@ runGenKeys opts = do
     privExists <- doesFileExist priv
     when pubExists $ putStrLn $ "File " ++ pub ++ " already exists."
     when privExists $ putStrLn $ "File " ++ priv ++ " already exists."
-    if pubExists || privExists 
+    if pubExists || privExists
         then do
             if opts.optOverwrite
             then proceed
@@ -193,10 +220,10 @@ runGenKeys opts = do
     where
         pub = opts.optPubKey
         priv = opts.optPrivKey
-        proceed = do 
-            (PubKey (n, e), PrivKey (_, d)) <- genKeys opts.optKeySize
+        proceed = do
+            (PubKey (n, e), privKey) <- genKeys opts.optKeySize
             writeIntegers pub n e
-            writeIntegers priv n d
             putStrLn $ "public encryption key saved in file " ++ pub
+            writePrivKey priv privKey
             putStrLn $ "private decryption key saved in file " ++ priv
 
