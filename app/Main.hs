@@ -76,7 +76,7 @@ main = do
             (helper <*> versionOption <*> programOptions)
             (fullDesc <> progDesc "Encrypts files using RSA algorithm (without padding)." <> 
                 header "myrsa - an encryption CLI tool for educational purposes" <>
-                footer "Note: This is an experimental tool. The size of last input chunk is appended to output file in plaintext.")
+                footer "Note: This is an experimental tool")
     
     versionOption :: Parser (a -> a)
     versionOption = infoOption currentVersion (long "version" <> help "Show version")
@@ -196,11 +196,9 @@ runDecrypt d = do
     hFlush stdout
     hIn <- openBinaryFile d.optDecInput ReadMode
     hOut <- openBinaryFile d.optDecOutput WriteMode
-    if d.optDecNoCRT
-        then do
-            putStrLn "Disabling Chinese Remainder Theorem optimization"
-            dec key hIn hOut
-        else decCRT key hIn hOut
+    when d.optDecNoCRT $
+        putStrLn "Disabled Chinese Remainder Theorem optimization"
+    dec d.optDecNoCRT key hIn hOut
     hClose hOut
     hClose hIn
 

@@ -3,11 +3,12 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Lib
-    ( enc, dec, decCRT, genKeys, nOfBits, PubKey(..), PrivKey(..)
+    ( enc, dec, genKeys, nOfBits, PubKey(..), PrivKey(..)
     ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import Data.Word ( Word8 )
 import Data.Bits
 import System.IO
 import Crypto.Number.Prime (generatePrime)
@@ -15,6 +16,7 @@ import Crypto.Number.Basic (gcde)
 import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
 import Control.Monad (when)
+import Data.Maybe (isJust, fromJust)
 
 
 newtype PubKey = PubKey (Integer, Integer)
@@ -77,108 +79,113 @@ expmod m a k = expmod' a k 1
         | k == 0 = s
         | otherwise = expmod' (a*a `mod` m) (k `div` 2) $ if even k then s else s*a `mod` m
 
+-- max block size allowed by current padding method
+-- which assumes block size fits in 1 byte
+maxEncInputBlockSize :: Int
+maxEncInputBlockSize = 255
+
+-- fill up the last block using PKCS #7
+-- https://datatracker.ietf.org/doc/html/rfc2315#section-10.3
+-- first arg is the traget block size (bytes)
+pad :: Int -> ByteString -> (ByteString, Maybe ByteString)
+pad k bs
+    | k > maxEncInputBlockSize = error "currently padding is not implemented for input blocks bigger than 255 bytes"
+    | B.length bs > k = error "bytestring is too big for padding"
+    | otherwise = 
+        if B.length bs == k
+        then (check bs, Just $ check $ B.replicate k (fromIntegral k))
+        else (check $ B.append bs padding, Nothing)
+    where
+    paddingLength :: Int
+    paddingLength = k - (B.length bs `mod` k)
+    padding :: ByteString
+    padding = B.replicate paddingLength (fromIntegral paddingLength)
+
+    check :: ByteString -> ByteString
+    check bs = if B.length bs /= k then error "bytestring has wrong length" else bs
+
 enc :: PubKey -> Handle -> Handle -> IO ()
 enc (PubKey (n, e)) hIn hOut = 
     loop
     where
-    inBlockSize = encInputBlockSize n -- bytes
+    inBlockSize = min maxEncInputBlockSize $ encInputBlockSize n -- bytes
     outBlockSize = encOutputBlockSize n
-    outBits = (outBlockSize * 8)
+    outBits = outBlockSize * 8
+
+    encBS :: ByteString -> ByteString
+    encBS bs =
+        let m = bs2i bs
+            m2 = expmod n m e
+        in i2bs outBits m2
 
     loop = do
         bs <- B.hGet hIn inBlockSize
-        let m = bs2i bs
-        let m2 = expmod n m e
-        let bsOut = i2bs outBits m2
-        B.hPut hOut bsOut
         eof <- hIsEOF hIn
-        if eof 
+        if eof
         then do
-            -- we write the size (in bytes) of last chunk (in plaintext)
-            let lastChunkSize = integerFromInt $ B.length bs
-            B.hPut hOut $
-                i2bs outBits lastChunkSize
-        else loop
+            let (bsPadded, bsEnd) = pad inBlockSize bs
+            B.hPut hOut $ encBS bsPadded
+            when (isJust bsEnd) $ 
+                B.hPut hOut $ encBS $ fromJust bsEnd       
+        else do
+            B.hPut hOut $ encBS bs
+            loop
 
-dec :: PrivKey -> Handle -> Handle -> IO ()
-dec k hIn hOut = 
-    go
+dec :: Bool -> PrivKey -> Handle -> Handle -> IO ()
+dec noCRT k hIn hOut = 
+    loop
     where
     n = k.privP * k.privQ
     d = k.privD
-
-    inBlockSize = encOutputBlockSize n
-    outBlockSize = encInputBlockSize n
-    outBits = outBlockSize * 8
-
-    go :: IO ()
-    go = do
-        bs <- B.hGet hIn inBlockSize
-        eof <- hIsEOF hIn
-        if eof
-        then return ()
-        else do
-            let m = bs2i bs
-            let m2 = expmod n m d
-            loop m2
-    loop prevDecryptedBlock = do
-        bs <- B.hGet hIn inBlockSize
-        eof <- hIsEOF hIn
-        if eof
-        then do
-            let lastChunkBytes = integerToInt $ bs2i bs
-            B.hPut hOut $ i2bs (lastChunkBytes * 8) prevDecryptedBlock
-        else do
-            B.hPut hOut $ i2bs outBits prevDecryptedBlock
-            let m = bs2i bs
-            let m2 = expmod n m d
-            loop m2
-
--- uses optimization based on Chinese Remainder Theorem 
-decCRT :: PrivKey -> Handle -> Handle -> IO ()
-decCRT k hIn hOut = 
-    go
-    where
-    n = k.privP * k.privQ
-    inBlockSize = encOutputBlockSize n
-    outBlockSize = encInputBlockSize n
-    outBits = outBlockSize * 8
-
+    
     p = k.privP
     q = k.privQ
     dP = k.privDp
     dQ = k.privDq
     qInv = k.privQinv
 
-    aux :: Integer -> Integer 
-    aux c = 
+    inBlockSize = encOutputBlockSize n
+    outBlockSize = min maxEncInputBlockSize $ encInputBlockSize n
+    outBits = outBlockSize * 8
+
+    auxClassic :: Integer -> Integer
+    auxClassic c = expmod n c d
+
+    -- optimization based on Chinese Remainder Theorem 
+    auxCRT :: Integer -> Integer 
+    auxCRT c = 
         let m1 = expmod p c dP
             m2 = expmod q c dQ
             h = (qInv * (m1 - m2)) `mod` p
             m = m2 + h * q
         in m
     
-    go :: IO ()
-    go = do
+    aux :: Integer -> Integer
+    aux = if noCRT then auxClassic else auxCRT 
+
+    loop :: IO ()
+    loop = do
         bs <- B.hGet hIn inBlockSize
         eof <- hIsEOF hIn
-        if eof
-        then return ()
-        else do
-            let c = bs2i bs
-            let m = aux c
-            loop m
-    loop prevDecryptedBlock = do
-        bs <- B.hGet hIn inBlockSize
-        eof <- hIsEOF hIn
+        let m = aux $ bs2i bs
+        let bsMaybePadded = i2bs outBits m
         if eof
         then do
-            let lastChunkBytes = integerToInt $ bs2i bs
-            B.hPut hOut $ i2bs (lastChunkBytes * 8) prevDecryptedBlock
+            let bsPadded = bsMaybePadded
+            let paddingLength :: Int = fromIntegral $ B.last bsPadded
+            if paddingLength == outBlockSize
+            then return () -- just ignore the bs (because whole block is padding)
+            else if paddingLength < outBlockSize
+                then do
+                    let original = B.take (outBlockSize - paddingLength) bsPadded
+                    B.hPut hOut original
+                else error "last block padding length is invalid"
         else do
-            B.hPut hOut $ i2bs outBits prevDecryptedBlock
-            let c = bs2i bs
-            loop $ aux c
+            -- bsMaybePadded is not padded 
+            -- because its not the last block
+            -- and only last block is padded
+            B.hPut hOut bsMaybePadded
+            loop
 
 genKeys :: Int -> IO (PubKey, PrivKey)
 genKeys size = do

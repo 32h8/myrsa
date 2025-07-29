@@ -1,8 +1,8 @@
 # myrsa
 
 Tool for file encryption using RSA algorithm without padding (aka “textbook RSA”). Written in Haskell.  
-Note: This is an experimental tool for educational purposes.
-Input is processed in chunks. The size of last chunk is appended to output in plaintext.
+Note: This is an experimental tool for educational purposes.  
+Encryption input is processed in blocks of max size 255 bytes. The last block might be filled using [method from PKCS #7](https://datatracker.ietf.org/doc/html/rfc2315#section-10.3).
 
 ## Examples
 
@@ -35,8 +35,7 @@ Available commands:
   dec                      Decrypt a file
   gen                      Generate keys
 
-Note: This is an experimental tool. The size of last input chunk is appended to
-output file in plaintext.
+Note: This is an experimental tool
 ```
 
 Generate keys
