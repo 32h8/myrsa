@@ -17,7 +17,7 @@ import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
 import Control.Monad (when)
 import Data.Maybe (isJust, fromJust)
-
+import Control.Exception (evaluate)
 
 newtype PubKey = PubKey (Integer, Integer)
 data PrivKey = PrivKey
@@ -104,6 +104,20 @@ pad k bs
     check :: ByteString -> ByteString
     check bs = if B.length bs /= k then error "bytestring has wrong length" else bs
 
+stripPadding :: ByteString -> ByteString
+stripPadding bs = 
+    if paddingLength > B.length bs
+    then error "invalid padding: given padding length is bigger than block length"
+    else
+        let (original, padding) = B.splitAt originalLength bs
+            validPadding = B.all (== B.last bs) padding
+        in if validPadding
+            then original
+            else error "invalid padding"  
+    where
+        paddingLength :: Int = fromIntegral $ B.last bs
+        originalLength = B.length bs - paddingLength
+
 enc :: PubKey -> Handle -> Handle -> IO ()
 enc (PubKey (n, e)) hIn hOut = 
     loop
@@ -171,15 +185,9 @@ dec noCRT k hIn hOut =
         let bsMaybePadded = i2bs outBits m
         if eof
         then do
-            let bsPadded = bsMaybePadded
-            let paddingLength :: Int = fromIntegral $ B.last bsPadded
-            if paddingLength == outBlockSize
-            then return () -- just ignore the bs (because whole block is padding)
-            else if paddingLength < outBlockSize
-                then do
-                    let original = B.take (outBlockSize - paddingLength) bsPadded
-                    B.hPut hOut original
-                else error "last block padding length is invalid"
+            original <- evaluate $ stripPadding bsMaybePadded
+            when (not (B.null original)) $
+                B.hPut hOut original
         else do
             -- bsMaybePadded is not padded 
             -- because its not the last block
