@@ -20,6 +20,7 @@ maxEncInputBlockSize = 255
 -- first arg is the traget block size (bytes)
 pad :: Int -> ByteString -> (ByteString, Maybe ByteString)
 pad k bs
+    | k <= 0 = error "target length must be > 0"
     | k > maxEncInputBlockSize = error "currently padding is not implemented for input blocks bigger than 255 bytes"
     | B.length bs > k = error "bytestring is too big for padding"
     | otherwise = 
