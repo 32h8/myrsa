@@ -64,3 +64,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - myrsa
+    - hspec
+    - hspec-discover
+    - QuickCheck
