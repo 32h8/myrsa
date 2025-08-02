@@ -19,6 +19,7 @@ import Control.Monad (when)
 import Data.Maybe (isJust, fromJust)
 import Control.Exception (evaluate)
 import Padding ( pad, stripPadding, maxEncInputBlockSize )
+import Test.QuickCheck
 
 newtype PubKey = PubKey (Integer, Integer)
 data PrivKey = PrivKey
@@ -31,11 +32,18 @@ data PrivKey = PrivKey
     }
 
 -- returns floor of logarithm with base 2
-myLog :: Integer -> Int
-myLog x =
-    if x <= 1
-    then 0
-    else 1 + myLog (x `div` 2)
+myLog :: Integral a => a -> Int
+myLog x = go 0 x
+    where
+    go !k !y = if y <= 1 then k else go (k + 1) (y `div` 2)
+
+prop_log = \(Positive (Large (x :: Int))) -> myLog x == helperLog x
+    where
+    helperLog :: Integral a => a -> Int
+    helperLog x =
+        if x <= 1
+        then 0
+        else 1 + helperLog (x `div` 2)
 
 nOfBits :: Integer -> Int
 nOfBits x = 1 + myLog x  
