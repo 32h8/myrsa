@@ -87,3 +87,9 @@ stripPaddingSpec =
             \(b :: Word8) ->
             let input = B.replicate inputLen b
             in input == (stripPadding $ fst $ pad len input)
+        it "throws when attached padding length is bigger than input" $
+            let len :: Int = 10
+                b :: Word8 = fromIntegral $ len + 1
+                invalidInput = 
+                    B.snoc (B.replicate (len - 1) b) b
+            in evaluate (stripPadding invalidInput) `shouldThrow` anyErrorCall
