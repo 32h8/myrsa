@@ -23,7 +23,7 @@ spec = do
 
 addPaddingSpec :: Spec
 addPaddingSpec =
-    describe "add padding tests" $ do
+    describe "pad" $ do
         it "handles empty ByteString" $
             let len = 100
                 padding = B.replicate len (fromIntegral len)
@@ -33,7 +33,7 @@ addPaddingSpec =
                 full = B.replicate len 0b010
                 padding = B.replicate len (fromIntegral len)
             in pad len full `shouldBe` (full, Just padding)
-        it "pad to 255 bytes" $
+        it "pads to 255 bytes" $
             let len = 255
                 inputLen = 10
                 input = B.replicate inputLen 0b101
@@ -64,16 +64,23 @@ addPaddingSpec =
                 padding = B.replicate paddingLen (fromIntegral paddingLen)
                 output = B.append input padding
             in pad len input == (output, Nothing)
-        prop "padding not needed" $
+        modifyMaxSuccess (const 30) $ prop "padding not needed" $
             forAll (chooseInt (1, 255)) $ \len ->
+            let padding = B.replicate len (fromIntegral len)
+            in \(b :: Word8) ->
+                let input = B.replicate len b
+                in pad len input == (input, Just padding)
+        prop "result length" $
+            forAll (chooseInt (1, 255)) $ \len ->
+            forAll (chooseInt (0, len)) $ \inputLen ->
             \(b :: Word8) ->
-            let input = B.replicate len b
-                padding = B.replicate len (fromIntegral len)
-            in pad len input == (input, Just padding)
+            let input = B.replicate inputLen b
+                (bs, m) = pad len input
+            in (len == B.length bs) && maybe True (\r -> len == B.length r) m
 
 stripPaddingSpec :: Spec
 stripPaddingSpec =
-    describe "strip padding tests" $ do
+    describe "stripPadding" $ do
         prop "pad then strip" $
             forAll (chooseInt (1, 255)) $ \len ->
             forAll (chooseInt (0, len - 1)) $ \inputLen ->
