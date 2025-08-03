@@ -11,6 +11,7 @@ module Lib
     , PrivKey(..)
     , encInputBlockSize
     , encOutputBlockSize
+    , expmod
     ) where
 
 import Data.ByteString (ByteString)
