@@ -68,6 +68,7 @@ test-suite myrsa-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      LibSpec
       PaddingSpec
       Paths_myrsa
   autogen-modules:

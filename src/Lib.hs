@@ -3,7 +3,14 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Lib
-    ( enc, dec, genKeys, nOfBits, PubKey(..), PrivKey(..)
+    ( enc
+    , dec
+    , genKeys
+    , nOfBits
+    , PubKey(..)
+    , PrivKey(..)
+    , encInputBlockSize
+    , encOutputBlockSize
     ) where
 
 import Data.ByteString (ByteString)
