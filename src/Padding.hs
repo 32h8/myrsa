@@ -36,11 +36,13 @@ pad k bs
     check :: ByteString -> ByteString
     check bs = if B.length bs /= k then error "bytestring has wrong length" else bs
 
+-- arg must be a padded block
 stripPadding :: ByteString -> ByteString
-stripPadding bs = 
-    if paddingLength > B.length bs
-    then error "invalid padding: given padding length is bigger than block length"
-    else
+stripPadding bs 
+    | paddingLength == 0 = error "padding length must be > 0"
+    | paddingLength > B.length bs = 
+            error "invalid padding: given padding length is bigger than block length"
+    | otherwise =
         let (original, padding) = B.splitAt originalLength bs
             validPadding = B.all (== B.last bs) padding
         in if validPadding

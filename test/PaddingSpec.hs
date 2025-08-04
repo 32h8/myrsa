@@ -93,3 +93,6 @@ stripPaddingSpec =
                 invalidInput = 
                     B.snoc (B.replicate (len - 1) b) b
             in evaluate (stripPadding invalidInput) `shouldThrow` anyErrorCall
+        it "throws when attached padding length is 0" $
+            let invalidInput = B.snoc (B.replicate 10 0b_10) 0
+            in evaluate (stripPadding invalidInput) `shouldThrow` anyErrorCall
