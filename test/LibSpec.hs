@@ -15,6 +15,7 @@ import qualified Data.ByteString as B
 import Data.Word ( Word8 )
 import Control.Exception (evaluate)
 import Lib (encInputBlockSize, encOutputBlockSize, expmod)
+import Data.Bits
 
 spec :: Spec
 spec = do
@@ -37,6 +38,16 @@ encInputBlockSizeSpec =
             encInputBlockSize 0x_01_00_00 `shouldBe` 2
         it "returns 2 bytes" $ do
             encInputBlockSize 0x_ff_ff_ff `shouldBe` 2
+        prop "returns l for modulus 1^(8*l)" $
+            \(Positive (l :: Int)) ->
+                let modulus :: Integer = (1 `shiftL` (8 * l))
+                in encInputBlockSize modulus == l
+        prop "returns l - 1 for modulus 1^(8*l) - 1" $
+            \(Positive (l :: Int)) ->
+                let l2 = l + 1
+                    modulus :: Integer = (1 `shiftL` (8 * l2)) - 1
+                in encInputBlockSize modulus == l2 - 1
+
 
 -- condition: output block must store the max output number (which is modulus - 1)
 -- finds the minimum size of such block
@@ -53,6 +64,14 @@ encOutputBlockSizeSpec =
             encOutputBlockSize 0x_1_00_00 `shouldBe` 2
         it "returns 3 bytes" $
             encOutputBlockSize 0x_1_00_01 `shouldBe` 3
+        prop "returns l for modulus 1^(8*l)" $
+            \(Positive (l :: Int)) ->
+                let modulus :: Integer = (1 `shiftL` (8 * l))
+                in encOutputBlockSize modulus == l
+        prop "returns l + 1 for modulus 1^(8*l) + 1" $
+            \(Positive (l :: Int)) ->
+                let modulus :: Integer = (1 `shiftL` (8 * l)) + 1
+                in encOutputBlockSize modulus == l + 1
 
 expmodSpec :: Spec
 expmodSpec = do
