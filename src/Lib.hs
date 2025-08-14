@@ -7,6 +7,8 @@ module Lib
     , dec
     , genKeys
     , nOfBits
+    , nOfBytes
+    , myLog
     , PubKey(..)
     , PrivKey(..)
     , encInputBlockSize
@@ -18,9 +20,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Word ( Word8 )
 import Data.Bits
+
 import System.IO
 import Crypto.Number.Prime (generatePrime)
-import Crypto.Number.Basic (gcde)
+import Crypto.Number.Basic (gcde, numBytes)
 import Crypto.Util (bs2i, i2bs)
 import GHC.Num (integerFromInt, integerToInt)
 import Control.Monad (when)
@@ -45,48 +48,28 @@ myLog x = go 0 x
     where
     go !k !y = if y <= 1 then k else go (k + 1) (y `div` 2)
 
-prop_log = \(Positive (Large (x :: Int))) -> myLog x == helperLog x
-    where
-    helperLog :: Integral a => a -> Int
-    helperLog x =
-        if x <= 1
-        then 0
-        else 1 + helperLog (x `div` 2)
-
 nOfBits :: Integer -> Int
 nOfBits x = 1 + myLog x  
+
+nOfBytes :: Integer -> Int
+nOfBytes n = go 0 n
+    where
+        go !k x = 
+            if x > 0 
+            then go (k + 1) (x `shiftR` 8) 
+            else k
 
 -- number of bytes in encryption input block
 -- argument is modulus
 encInputBlockSize :: Integer -> Int
 encInputBlockSize n
     | n <= (2^8 - 1) = error "too small n: can't encrypt even 1 byte"
-    | otherwise = go 1 (2^8)
-    where
-    -- max value for k bytes is (2^8)^k - 1
-    -- finds maximum k such that
-    -- (2^8)^k - 1 < n
-    -- so (2^8)^k < n + 1
-    n2 = n + 1
-    go :: Int -> Integer -> Int
-    go !k x =
-        let x2 = x `shiftL` 8 
-        in if x2 < n2 then go (k+1) x2 else k
+    | otherwise = nOfBytes n - 1
 
 -- number of bytes in encryption output block
 -- argument is modulus
 encOutputBlockSize :: Integer -> Int
-encOutputBlockSize n = go 1 (2^8)
-    where
-    -- max value for k bytes is (2^8)^k - 1 
-    -- finds minimum k such that 
-    -- (2^8)^k - 1 >= n - 1
-    -- so (2^8)^k >= n
-    go :: Int -> Integer -> Int
-    go !k x =
-        if x >= n
-        then k
-        else go (k+1) $ x `shiftL` 8 
+encOutputBlockSize n = nOfBytes n
 
 -- expmod m a k = a^k mod m 
 expmod :: (Integral a, Integral p) => p -> p -> a -> p

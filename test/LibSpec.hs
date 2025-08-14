@@ -3,6 +3,8 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module LibSpec where
 
@@ -14,14 +16,18 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Word ( Word8 )
 import Control.Exception (evaluate)
-import Lib (encInputBlockSize, encOutputBlockSize, expmod)
+import Lib
 import Data.Bits
+import Crypto.Number.Basic (numBytes)
+import Data.List (foldl')
 
 spec :: Spec
 spec = do
     encInputBlockSizeSpec
     encOutputBlockSizeSpec
     expmodSpec
+    nOfBytesSpec
+    myLogSpec
 
 -- condition: the number formed by input block needs to be less than modulus
 -- finds the max size of such block
@@ -57,20 +63,16 @@ encOutputBlockSizeSpec =
         it "returns 1 byte" $
             encOutputBlockSize 0x_______1 `shouldBe` 1
         it "returns 1 byte" $
-            encOutputBlockSize 0x____1_00 `shouldBe` 1
+            encOutputBlockSize 0x____1_00 `shouldBe` 2
         it "returns 2 bytes" $
             encOutputBlockSize 0x____1_01 `shouldBe` 2
         it "returns 2 bytes" $
-            encOutputBlockSize 0x_1_00_00 `shouldBe` 2
+            encOutputBlockSize 0x_1_00_00 `shouldBe` 3
         it "returns 3 bytes" $
             encOutputBlockSize 0x_1_00_01 `shouldBe` 3
-        prop "returns l for modulus 1^(8*l)" $
+        prop "returns l + 1 for modulus 1^(8*l)" $
             \(Positive (l :: Int)) ->
                 let modulus :: Integer = (1 `shiftL` (8 * l))
-                in encOutputBlockSize modulus == l
-        prop "returns l + 1 for modulus 1^(8*l) + 1" $
-            \(Positive (l :: Int)) ->
-                let modulus :: Integer = (1 `shiftL` (8 * l)) + 1
                 in encOutputBlockSize modulus == l + 1
 
 expmodSpec :: Spec
@@ -93,3 +95,38 @@ prop_expmod =
         if even k
         then expmod2 m ((a*a) `mod` m) (k `div` 2)
         else (a * expmod2 m a (k - 1)) `mod` m
+
+nOfBytesSpec :: Spec
+nOfBytesSpec = do
+    describe "nOfBytes" $ do
+        prop "equal to other implementation" $ 
+            prop_bytes
+
+prop_bytes = \(LargeInteger (x :: Integer)) -> 
+    nOfBytes x == numBytes x
+
+newtype LargeInteger = LargeInteger Integer deriving (Show, Eq, Ord, Num)
+
+instance Arbitrary LargeInteger where
+    arbitrary :: Gen LargeInteger
+    arbitrary = LargeInteger . fromWords <$> arbitrary
+      where
+        fromWords :: [Word8] -> Integer
+        fromWords = foldl' go 0
+        go :: Integer -> Word8 -> Integer
+        go acc w = (acc `shiftL` 8) + fromIntegral w
+    
+
+prop_log = \(Positive (Large (x :: Int))) -> myLog x == helperLog x
+    where
+    helperLog :: Integral a => a -> Int
+    helperLog x =
+        if x <= 1
+        then 0
+        else 1 + helperLog (x `div` 2)
+
+myLogSpec :: Spec
+myLogSpec = do
+    describe "myLog" $ do
+        prop "equal to other implementation" $ 
+            prop_log
