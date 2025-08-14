@@ -27,6 +27,11 @@ dependencies:
 - cryptonite
 - optparse-applicative
 - directory
+- cryptohash-sha256
+- utf8-string
+- text
+- hex-text
+- entropy
 
 ghc-options:
 - -Wall

@@ -11,8 +11,6 @@ module Lib
     , myLog
     , PubKey(..)
     , PrivKey(..)
-    , encInputBlockSize
-    , encOutputBlockSize
     , expmod
     ) where
 
@@ -29,8 +27,11 @@ import GHC.Num (integerFromInt, integerToInt)
 import Control.Monad (when)
 import Data.Maybe (isJust, fromJust)
 import Control.Exception (evaluate)
-import Padding ( pad, stripPadding, maxEncInputBlockSize )
+
 import Test.QuickCheck
+
+import qualified OAEP
+import System.Entropy (getEntropy)
 
 newtype PubKey = PubKey (Integer, Integer)
 data PrivKey = PrivKey
@@ -48,6 +49,12 @@ myLog x = go 0 x
     where
     go !k !y = if y <= 1 then k else go (k + 1) (y `div` 2)
 
+prop_bs = 
+      forAll (resize 1000 $ listOf arbitrary) $ \(xs :: [Word8]) -> 
+        let bs = B.pack xs
+            in collect (length xs) $ i2bs (8 * B.length bs) (bs2i bs) == bs
+
+
 nOfBits :: Integer -> Int
 nOfBits x = 1 + myLog x  
 
@@ -59,17 +66,6 @@ nOfBytes n = go 0 n
             then go (k + 1) (x `shiftR` 8) 
             else k
 
--- number of bytes in encryption input block
--- argument is modulus
-encInputBlockSize :: Integer -> Int
-encInputBlockSize n
-    | n <= (2^8 - 1) = error "too small n: can't encrypt even 1 byte"
-    | otherwise = nOfBytes n - 1
-
--- number of bytes in encryption output block
--- argument is modulus
-encOutputBlockSize :: Integer -> Int
-encOutputBlockSize n = nOfBytes n
 
 -- expmod m a k = a^k mod m 
 expmod :: (Integral a, Integral p) => p -> p -> a -> p
@@ -83,45 +79,39 @@ enc :: PubKey -> Handle -> Handle -> IO ()
 enc (PubKey (n, e)) hIn hOut = 
     loop
     where
-    inBlockSize = min maxEncInputBlockSize $ encInputBlockSize n -- bytes
-    outBlockSize = encOutputBlockSize n
-    outBits = outBlockSize * 8
+    k = nOfBytes n
+    kInBits = k * 8
+    maxMsgLen = OAEP.maxMessageSizeBytes k
 
-    encBS :: ByteString -> ByteString
-    encBS bs =
-        let m = bs2i bs
-            m2 = expmod n m e
-        in i2bs outBits m2
+    encBS :: ByteString -> IO ByteString
+    encBS bs = do
+        seed <- getEntropy OAEP.hLen
+        let encoded = OAEP.encode k seed bs
+        let m = bs2i encoded
+        return $ i2bs kInBits $ expmod n m e 
 
     loop = do
-        bs <- B.hGet hIn inBlockSize
+        m <- B.hGet hIn maxMsgLen
+        c <- encBS m
+        B.hPut hOut c
         eof <- hIsEOF hIn
-        if eof
-        then do
-            let (bsPadded, bsEnd) = pad inBlockSize bs
-            B.hPut hOut $ encBS bsPadded
-            when (isJust bsEnd) $ 
-                B.hPut hOut $ encBS $ fromJust bsEnd       
-        else do
-            B.hPut hOut $ encBS bs
-            loop
+        when (not eof) loop
 
 dec :: Bool -> PrivKey -> Handle -> Handle -> IO ()
-dec noCRT k hIn hOut = 
+dec noCRT key hIn hOut = 
     loop
     where
-    n = k.privP * k.privQ
-    d = k.privD
+    n = key.privP * key.privQ
+    d = key.privD
     
-    p = k.privP
-    q = k.privQ
-    dP = k.privDp
-    dQ = k.privDq
-    qInv = k.privQinv
+    p = key.privP
+    q = key.privQ
+    dP = key.privDp
+    dQ = key.privDq
+    qInv = key.privQinv
 
-    inBlockSize = encOutputBlockSize n
-    outBlockSize = min maxEncInputBlockSize $ encInputBlockSize n
-    outBits = outBlockSize * 8
+    k = nOfBytes n
+    kInBits = k * 8
 
     auxClassic :: Integer -> Integer
     auxClassic c = expmod n c d
@@ -140,31 +130,23 @@ dec noCRT k hIn hOut =
 
     loop :: IO ()
     loop = do
-        bs <- B.hGet hIn inBlockSize
+        bs <- B.hGet hIn k
+        when (B.length bs /= k) $ evaluate $ error "decoding error: invalid block size"
+        B.hPut hOut $ OAEP.decode k $ i2bs kInBits $ aux $ bs2i bs
         eof <- hIsEOF hIn
-        let m = aux $ bs2i bs
-        let bsMaybePadded = i2bs outBits m
-        if eof
-        then do
-            original <- evaluate $ stripPadding bsMaybePadded
-            when (not (B.null original)) $
-                B.hPut hOut original
-        else do
-            -- bsMaybePadded is not padded 
-            -- because its not the last block
-            -- and only last block is padded
-            B.hPut hOut bsMaybePadded
-            loop
+        when (not eof) loop
 
 genKeys :: Int -> IO (PubKey, PrivKey)
-genKeys size = do
-    putStrLn $ "generating keys of size " ++ show size ++ " bits"
-    -- TODO: check if size is valid
-    let primeSize = size `div` 2
-    when (primeSize < 5) $ error "Aborting. Invalid key size which should be >= 10bits."
+genKeys sizeBits = do
+    let minKeySizeBits = OAEP.minModulusSizeBytes * 8
+    when (sizeBits < minKeySizeBits) $
+        evaluate $ error $ "key bit size must be >= " ++ show minKeySizeBits ++ " bits"
+    putStrLn $ "generating keys of size " ++ show sizeBits ++ " bits"
+    let primeSizeBits = sizeBits `div` 2
+    when (primeSizeBits < 5) $ error "Aborting. Invalid key size which should be >= 10bits."
     hFlush stdout
-    p <- generatePrime primeSize
-    q <- generatePrime primeSize
+    p <- generatePrime primeSizeBits
+    q <- generatePrime primeSizeBits
     let n = p * q
     putStrLn $ "modulus size: " ++ show (nOfBits n) ++ " bits"
     hFlush stdout

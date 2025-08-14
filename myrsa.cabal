@@ -26,6 +26,8 @@ source-repository head
 library
   exposed-modules:
       Lib
+      MGF
+      OAEP
       Padding
   other-modules:
       Paths_myrsa
@@ -39,9 +41,14 @@ library
     , base >=4.7 && <5
     , bytestring
     , crypto-api
+    , cryptohash-sha256
     , cryptonite
     , directory
+    , entropy
+    , hex-text
     , optparse-applicative
+    , text
+    , utf8-string
   default-language: Haskell2010
 
 executable myrsa
@@ -58,10 +65,15 @@ executable myrsa
     , base >=4.7 && <5
     , bytestring
     , crypto-api
+    , cryptohash-sha256
     , cryptonite
     , directory
+    , entropy
+    , hex-text
     , myrsa
     , optparse-applicative
+    , text
+    , utf8-string
   default-language: Haskell2010
 
 test-suite myrsa-test
@@ -69,6 +81,8 @@ test-suite myrsa-test
   main-is: Spec.hs
   other-modules:
       LibSpec
+      MGFSpec
+      OAEPSpec
       PaddingSpec
       Paths_myrsa
   autogen-modules:
@@ -81,10 +95,15 @@ test-suite myrsa-test
     , base >=4.7 && <5
     , bytestring
     , crypto-api
+    , cryptohash-sha256
     , cryptonite
     , directory
+    , entropy
+    , hex-text
     , hspec
     , hspec-discover
     , myrsa
     , optparse-applicative
+    , text
+    , utf8-string
   default-language: Haskell2010

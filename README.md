@@ -1,8 +1,8 @@
 # myrsa
 
-Tool for file encryption using RSA algorithm without padding (aka “textbook RSA”). Written in Haskell.  
-Note: This is an experimental tool for educational purposes.  
-Encryption input is processed in blocks of max size 255 bytes. The last block might be filled using [method from PKCS #7](https://datatracker.ietf.org/doc/html/rfc2315#section-10.3).
+Tool for file encryption using RSA algorithm with OAEP padding. Written in Haskell
+The hash function used is SHA256.
+Note: This is an experimental tool for educational purposes.
 
 ## Examples
 
