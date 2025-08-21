@@ -1,7 +1,6 @@
 # myrsa
 
-Tool for file encryption using RSA algorithm with OAEP padding. Written in Haskell
-The hash function used is SHA256.
+Tool for file encryption using RSA algorithm with OAEP padding. Written in Haskell. The hash function used is SHA256.  
 Note: This is an experimental tool for educational purposes.
 
 ## Examples
