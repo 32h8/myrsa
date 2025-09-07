@@ -32,6 +32,9 @@ dependencies:
 - text
 - hex-text
 - entropy
+- async
+- stm
+- stm-chans
 
 ghc-options:
 - -Wall

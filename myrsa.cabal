@@ -38,6 +38,7 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       QuickCheck
+    , async
     , base >=4.7 && <5
     , bytestring
     , crypto-api
@@ -47,6 +48,8 @@ library
     , entropy
     , hex-text
     , optparse-applicative
+    , stm
+    , stm-chans
     , text
     , utf8-string
   default-language: Haskell2010
@@ -62,6 +65,7 @@ executable myrsa
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       QuickCheck
+    , async
     , base >=4.7 && <5
     , bytestring
     , crypto-api
@@ -72,6 +76,8 @@ executable myrsa
     , hex-text
     , myrsa
     , optparse-applicative
+    , stm
+    , stm-chans
     , text
     , utf8-string
   default-language: Haskell2010
@@ -92,6 +98,7 @@ test-suite myrsa-test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , async
     , base >=4.7 && <5
     , bytestring
     , crypto-api
@@ -104,6 +111,8 @@ test-suite myrsa-test
     , hspec-discover
     , myrsa
     , optparse-applicative
+    , stm
+    , stm-chans
     , text
     , utf8-string
   default-language: Haskell2010

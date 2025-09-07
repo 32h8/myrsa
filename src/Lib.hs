@@ -32,6 +32,10 @@ import Test.QuickCheck
 
 import qualified OAEP
 import System.Entropy (getEntropy)
+import Control.Concurrent.Async
+import Control.Concurrent.STM 
+import Control.Concurrent.STM.TBMQueue
+import Control.Concurrent (getNumCapabilities)
 
 newtype PubKey = PubKey (Integer, Integer)
 data PrivKey = PrivKey
@@ -98,8 +102,17 @@ enc (PubKey (n, e)) hIn hOut =
         when (not eof) loop
 
 dec :: Bool -> PrivKey -> Handle -> Handle -> IO ()
-dec noCRT key hIn hOut = 
-    loop
+dec noCRT key hIn hOut = do
+    caps <- getNumCapabilities
+    putStrLn $ "getNumCapabilities = " ++ show caps
+    let queueCapacity = max 1 (caps - 2)
+    queue <- newTBMQueueIO queueCapacity
+    putStrLn $ "queue capacity = " ++ show queueCapacity
+    withAsync (readQueue queue) $ \reading -> 
+        withAsync (fillQueue queue reading) $ \filling -> do
+            link2 reading filling
+            waitBoth reading filling
+            return ()
     where
     n = key.privP * key.privQ
     d = key.privD
@@ -128,13 +141,35 @@ dec noCRT key hIn hOut =
     aux :: Integer -> Integer
     aux = if noCRT then auxClassic else auxCRT 
 
-    loop :: IO ()
-    loop = do
-        bs <- B.hGet hIn k
-        when (B.length bs /= k) $ evaluate $ error "decoding error: invalid block size"
-        B.hPut hOut $ OAEP.decode k $ i2bs kInBits $ aux $ bs2i bs
+    decryptAndDecode :: ByteString -> ByteString
+    decryptAndDecode bs = OAEP.decode k $ i2bs kInBits $ aux $ bs2i bs 
+
+    job :: ByteString -> IO ByteString
+    job bs = evaluate $ decryptAndDecode bs
+
+    fillQueue :: TBMQueue (Async ByteString) -> Async a -> IO ()
+    fillQueue queue reading = do 
         eof <- hIsEOF hIn
-        when (not eof) loop
+        if eof
+        then atomically $ closeTBMQueue queue
+        else do
+            bs <- B.hGet hIn k
+            when (B.length bs /= k) $ evaluate $ error "decoding error: invalid block size"
+            a <- async (job bs)
+            link a
+            link2 a reading
+            atomically $ writeTBMQueue queue a
+            fillQueue queue reading
+
+    readQueue :: TBMQueue (Async ByteString) -> IO ()
+    readQueue queue = do
+        r <- atomically $ readTBMQueue queue
+        case r of
+            Nothing -> return ()
+            (Just a) -> do
+                bs <- wait a
+                B.hPut hOut bs
+                readQueue queue
 
 genKeys :: Int -> IO (PubKey, PrivKey)
 genKeys sizeBits = do
