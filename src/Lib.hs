@@ -81,7 +81,7 @@ expmod m a k = expmod' a k 1
         | otherwise = expmod' (a*a `mod` m) (k `div` 2) $ if even k then s else s*a `mod` m
 
 enc :: PubKey -> Handle -> Handle -> IO ()
-enc (PubKey (n, e)) hIn hOut = 
+enc key@(PubKey (n, e)) hIn hOut = 
     loop
     where
     k = nOfBytes n
@@ -93,7 +93,7 @@ enc (PubKey (n, e)) hIn hOut =
         seed <- getEntropy OAEP.hLen
         let encoded = OAEP.encode k seed bs
         let m = bs2i encoded
-        return $ i2bs kInBits $ expmod n m e 
+        return $ i2bs kInBits $ encrypt key m
 
     loop = do
         m <- B.hGet hIn maxMsgLen
@@ -101,6 +101,9 @@ enc (PubKey (n, e)) hIn hOut =
         B.hPut hOut c
         eof <- hIsEOF hIn
         when (not eof) loop
+
+encrypt :: PubKey -> Integer -> Integer
+encrypt (PubKey (n, e)) m = expmod n m e
 
 decryptClassic :: PrivKey -> Integer -> Integer
 decryptClassic key c = expmod key.privN c key.privD
