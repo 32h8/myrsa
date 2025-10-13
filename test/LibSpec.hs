@@ -19,6 +19,7 @@ import Control.Exception (evaluate)
 import Lib
 import Data.Bits
 import Crypto.Number.Basic (numBytes)
+import Crypto.Util (bs2i, i2bs)
 import Data.List (foldl')
 
 spec :: Spec
@@ -26,6 +27,8 @@ spec = do
     expmodSpec
     nOfBytesSpec
     myLogSpec
+    encryptDecryptSpec
+    decryptSpec
 
 expmodSpec :: Spec
 expmodSpec = do
@@ -82,3 +85,37 @@ myLogSpec = do
     describe "myLog" $ do
         prop "equal to other implementation" $ 
             prop_log
+
+encryptDecryptSpec :: Spec
+encryptDecryptSpec = do
+    describe "encrypt decrypt" $ do
+        prop "encrypt then decrypt" $ 
+            prop_encryptDecrypt
+
+prop_encryptDecrypt :: Property
+prop_encryptDecrypt = ioProperty $ do
+    let modulusSizeBytes = 128
+    let modulusSizeBits = modulusSizeBytes * 8
+    (pubKey, privKey) <- genKeysSilent modulusSizeBits
+    let bs :: ByteString = B.singleton 0x00 <> B.replicate (modulusSizeBytes - 1) 0b101
+    let m = bs2i bs
+    let mEncrypted = encrypt pubKey m
+    return $ 
+        decryptClassic privKey mEncrypted == m 
+
+decryptSpec :: Spec
+decryptSpec = do
+    describe "decryption" $ do
+        prop "decryptClassic is equal to decryptCRT" $ 
+            prop_decrypt
+
+prop_decrypt :: Property
+prop_decrypt = ioProperty $ do
+    let modulusSizeBytes = 128
+    let modulusSizeBits = modulusSizeBytes * 8
+    (pubKey, privKey) <- genKeysSilent modulusSizeBits
+    let bs :: ByteString = B.singleton 0x00 <> B.replicate (modulusSizeBytes - 1) 0b101
+    let m = bs2i bs
+    let mEncrypted = encrypt pubKey m
+    return $ 
+        decryptClassic privKey mEncrypted == decryptCRT privKey mEncrypted

@@ -6,6 +6,10 @@ module Lib
     ( enc
     , dec
     , genKeys
+    , genKeysSilent
+    , encrypt
+    , decryptClassic
+    , decryptCRT
     , nOfBits
     , nOfBytes
     , myLog
@@ -176,24 +180,29 @@ dec noCRT key hIn hOut = do
                 B.hPut hOut bs
                 readQueue queue
 
-genKeys :: Int -> IO (PubKey, PrivKey)
-genKeys sizeBits = do
+
+genKeys, genKeysSilent :: Int -> IO (PubKey, PrivKey)
+genKeys = genKeysAux False
+genKeysSilent = genKeysAux True
+
+genKeysAux :: Bool -> Int -> IO (PubKey, PrivKey)
+genKeysAux silent sizeBits = do
     let minKeySizeBits = OAEP.minModulusSizeBytes * 8
     when (sizeBits < minKeySizeBits) $
         evaluate $ error $ "key bit size must be >= " ++ show minKeySizeBits ++ " bits"
-    putStrLn $ "generating keys of size " ++ show sizeBits ++ " bits"
+    when (not silent) $ putStrLn $ "generating keys of size " ++ show sizeBits ++ " bits"
     let primeSizeBits = sizeBits `div` 2
     when (primeSizeBits < 5) $ error "Aborting. Invalid key size which should be >= 10bits."
     hFlush stdout
     p <- generatePrime primeSizeBits
     q <- generatePrime primeSizeBits
     let n = p * q
-    putStrLn $ "modulus size: " ++ show (nOfBits n) ++ " bits"
+    when (not silent) $ putStrLn $ "modulus size: " ++ show (nOfBits n) ++ " bits"
     hFlush stdout
     -- Euler's totient function
     let tot = (p - 1) * (q - 1)
     let e = 2^16 + 1
-    putStrLn $ "using public exponent e = " ++ show e
+    when (not silent) $ putStrLn $ "using public exponent e = " ++ show e
     when (not $ 1 < e) $ error "error: e param should be > 1"
     when (not $ e < tot) $ error "error: e param should be < totient. Try increasing key size."
     let d = mminv e tot
