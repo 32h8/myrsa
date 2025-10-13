@@ -156,7 +156,7 @@ writeIntegers file a b = do
 
 writePrivKey :: FilePath -> PrivKey -> IO ()
 writePrivKey file k = do
-    let (PrivKey a1 a2 a3 a4 a5 a6) = k
+    let (PrivKey a1 a2 a3 a4 a5 a6 a7) = k
     handle <- openFile file WriteMode
     hPrint handle a1
     hPrint handle a2
@@ -164,6 +164,7 @@ writePrivKey file k = do
     hPrint handle a4
     hPrint handle a5
     hPrint handle a6
+    hPrint handle a7
     hClose handle
 
 readPrivKey :: FilePath -> IO PrivKey
@@ -171,6 +172,7 @@ readPrivKey file = do
     putStrLn $ "reading private key from file " ++ file
     handle <- openFile file ReadMode
     PrivKey <$> fmap read (hGetLine handle) <*>
+        fmap read (hGetLine handle) <*>
         fmap read (hGetLine handle) <*>
         fmap read (hGetLine handle) <*>
         fmap read (hGetLine handle) <*>

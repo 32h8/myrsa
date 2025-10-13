@@ -39,7 +39,8 @@ import Control.Concurrent (getNumCapabilities)
 
 newtype PubKey = PubKey (Integer, Integer)
 data PrivKey = PrivKey
-    { privP :: Integer
+    { privN :: Integer
+    , privP :: Integer
     , privQ :: Integer
     , privDp :: Integer
     , privDq :: Integer
@@ -114,7 +115,7 @@ dec noCRT key hIn hOut = do
             waitBoth reading filling
             return ()
     where
-    n = key.privP * key.privQ
+    n = key.privN
     d = key.privD
     
     p = key.privP
@@ -193,7 +194,8 @@ genKeys sizeBits = do
     when (not $ e < tot) $ error "error: e param should be < totient. Try increasing key size."
     let d = mminv e tot
     let privKey = PrivKey 
-            { privP = p
+            { privN = n
+            , privP = p
             , privQ = q
             , privDp = d `mod` (p - 1) 
             , privDq = d `mod` (q - 1)
