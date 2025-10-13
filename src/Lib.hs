@@ -102,6 +102,25 @@ enc (PubKey (n, e)) hIn hOut =
         eof <- hIsEOF hIn
         when (not eof) loop
 
+decryptClassic :: PrivKey -> Integer -> Integer
+decryptClassic key c = expmod key.privN c key.privD
+
+-- optimization based on Chinese Remainder Theorem 
+decryptCRT :: PrivKey -> Integer -> Integer 
+decryptCRT key c = 
+    let 
+        p = key.privP
+        q = key.privQ
+        dP = key.privDp
+        dQ = key.privDq
+        qInv = key.privQinv
+
+        m1 = expmod p c dP
+        m2 = expmod q c dQ
+        h = (qInv * (m1 - m2)) `mod` p
+        m = m2 + h * q
+    in m
+
 dec :: Bool -> PrivKey -> Handle -> Handle -> IO ()
 dec noCRT key hIn hOut = do
     caps <- getNumCapabilities
@@ -116,31 +135,13 @@ dec noCRT key hIn hOut = do
             return ()
     where
     n = key.privN
-    d = key.privD
-    
-    p = key.privP
-    q = key.privQ
-    dP = key.privDp
-    dQ = key.privDq
-    qInv = key.privQinv
-
     k = nOfBytes n
     kInBits = k * 8
-
-    auxClassic :: Integer -> Integer
-    auxClassic c = expmod n c d
-
-    -- optimization based on Chinese Remainder Theorem 
-    auxCRT :: Integer -> Integer 
-    auxCRT c = 
-        let m1 = expmod p c dP
-            m2 = expmod q c dQ
-            h = (qInv * (m1 - m2)) `mod` p
-            m = m2 + h * q
-        in m
     
     aux :: Integer -> Integer
-    aux = if noCRT then auxClassic else auxCRT 
+    aux = if noCRT 
+        then decryptClassic key 
+        else decryptCRT key
 
     decryptAndDecode :: ByteString -> ByteString
     decryptAndDecode bs = OAEP.decode k $ i2bs kInBits $ aux $ bs2i bs 
